@@ -1,40 +1,62 @@
-"use client"
+import { useState, useEffect, useRef } from "react";
 
-import { useState, useEffect } from "react"
+const WS_URL = "ws://localhost:3001"; // Change if backend runs elsewhere
+const API_URL = "http://localhost:3001/api/speeds";
 
 const Speedometer = () => {
-  const [speed, setSpeed] = useState(0)
-  const [targetSpeed, setTargetSpeed] = useState(0)
-  const [history, setHistory] = useState([])
-  const [maxSpeed, setMaxSpeed] = useState(0)
+  const [speed, setSpeed] = useState(0);
+  const [targetSpeed, setTargetSpeed] = useState(0);
+  const [history, setHistory] = useState([]);
+  const [maxSpeed, setMaxSpeed] = useState(0);
+  const wsRef = useRef(null);
 
   // Smooth speed animation
   useEffect(() => {
     const animationFrame = requestAnimationFrame(() => {
       if (Math.abs(speed - targetSpeed) > 0.5) {
-        const diff = targetSpeed - speed
-        setSpeed((prev) => prev + diff * 0.1) // Smooth easing
+        const diff = targetSpeed - speed;
+        setSpeed((prev) => prev + diff * 0.1);
       } else {
-        setSpeed(targetSpeed)
+        setSpeed(targetSpeed);
       }
-    })
+    });
+    return () => cancelAnimationFrame(animationFrame);
+  }, [speed, targetSpeed]);
 
-    return () => cancelAnimationFrame(animationFrame)
-  }, [speed, targetSpeed])
-
+  // Fetch history on mount
   useEffect(() => {
-    // Simulate real-time speed updates for demo
-    const interval = setInterval(() => {
-      const newSpeed = Math.floor(Math.random() * 220)
-      setTargetSpeed(newSpeed)
-      setMaxSpeed((prev) => Math.max(prev, newSpeed))
+    fetch(API_URL)
+      .then((res) => res.json())
+      .then((data) => {
+        setHistory(
+          data.slice(0, 10).map((item) => ({
+            speed: item.speed,
+            timestamp: new Date(item.timestamp),
+          }))
+        );
+        if (data.length > 0) {
+          setMaxSpeed(Math.max(...data.map((item) => item.speed)));
+          setTargetSpeed(data[0].speed);
+        }
+      });
+  }, []);
 
-      // Add to history
-      setHistory((prev) => [{ speed: newSpeed, timestamp: new Date() }, ...prev.slice(0, 9)])
-    }, 3000)
+  // WebSocket for live updates
+  useEffect(() => {
+    wsRef.current = new window.WebSocket(WS_URL);
+    wsRef.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      const newSpeed = data.speed;
+      setTargetSpeed(newSpeed);
+      setMaxSpeed((prev) => Math.max(prev, newSpeed));
+      setHistory((prev) => [
+        { speed: newSpeed, timestamp: new Date(data.timestamp) },
+        ...prev.slice(0, 9),
+      ]);
+    };
+    return () => wsRef.current && wsRef.current.close();
+  }, []);
 
-    return () => clearInterval(interval)
-  }, [])
 
   // Calculate rotation for needle (0km/h = -135deg, 220km/h = 135deg)
   const needleRotation = -135 + (speed / 220) * 270

@@ -7,6 +7,8 @@ const dataSimulator = require('./data-simulator');
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+const cors = require('cors');
+app.use(cors());
 
 // Initialize database and start data simulation
 db.initialize();
